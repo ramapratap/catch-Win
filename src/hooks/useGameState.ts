@@ -3,40 +3,76 @@ import { GameState, Cookie } from '../types/game';
 import { generateCookie, updateCookies, calculateScore, checkLevelUp } from '../utils/gameLogic';
 import { checkCollision } from '../utils/collisionDetection';
 import { storage } from '../utils/storage';
+import { COOKIE_TYPES, LEVEL_CONFIGS } from '../utils/constants';
 
-const initialGameState: GameState = {
-  isPlaying: false,
-  isPaused: false,
-  level: 1,
-  score: 0,
-  coins: 0,
-  catches: 0,
-  cookies: [],
-  mouthPosition: { x: 400, y: 300 },
-  mouthOpen: 0,
-  gameStartTime: 0
-};
+// const initialGameState: GameState = {
+//   isPlaying: false,
+//   isPaused: false,
+//   level: 1,
+//   score: 0,
+//   coins: 0,
+//   catches: 0,
+//   cookies: [],
+//   mouthPosition: { x: 400, y: 300 },
+//   mouthOpen: 0,
+//   gameStartTime: 0
+// };
 
-export function useGameState(canvasWidth: number, canvasHeight: number) {
+export const useGameState = (canvasWidth: number, canvasHeight: number) => {
   const [gameState, setGameState] = useState<GameState>({
-    ...initialGameState,
-    mouthPosition: { x: canvasWidth / 2, y: canvasHeight / 2 }
+    isPlaying: false,
+    isPaused: false,
+    level: 1,
+    score: 0,
+    coins: 0,
+    catches: 0,
+    cookies: [],
+    mouthPosition: { x: canvasWidth / 2, y: canvasHeight / 2 },
+    mouthOpen: false,
+    gameStartTime: 0
   });
 
-  const lastUpdateRef = useRef<number>(0);
   const lastSpawnRef = useRef<number>(0);
   const animationFrameRef = useRef<number>();
 
-  const startGame = useCallback((level: number = 1) => {
-    setGameState(prev => ({
-      ...initialGameState,
-      isPlaying: true,
-      level,
-      mouthPosition: { x: canvasWidth / 2, y: canvasHeight / 2 },
-      gameStartTime: Date.now()
-    }));
+  const generateCookie = useCallback((): Cookie => {
+    const config = LEVEL_CONFIGS[Math.min(gameState.level - 1, LEVEL_CONFIGS.length - 1)];
+    const speed = config.minSpeed + Math.random() * (config.maxSpeed - config.minSpeed);
     
-    lastUpdateRef.current = Date.now();
+    // Determine cookie type
+    const rand = Math.random();
+    let type: Cookie['type'] = 'normal';
+    
+    if (rand < COOKIE_TYPES.rotten.probability) {
+      type = 'rotten';
+    } else if (rand < COOKIE_TYPES.rotten.probability + COOKIE_TYPES.golden.probability) {
+      type = 'golden';
+    }
+
+    return {
+      id: `cookie_${Date.now()}_${Math.random()}`,
+      x: Math.random() * (canvasWidth - 60) + 30,
+      y: -30,
+      speed: speed * 60,
+      radius: 20,
+      type
+    };
+  }, [canvasWidth, gameState.level]);
+
+  const startGame = useCallback((level: number = 1) => {
+    setGameState({
+      isPlaying: true,
+      isPaused: false,
+      level,
+      score: 0,
+      coins: 0,
+      catches: 0,
+      cookies: [],
+      mouthPosition: { x: canvasWidth / 2, y: canvasHeight / 2 },
+      mouthOpen: false,
+      gameStartTime: Date.now()
+    });
+    
     lastSpawnRef.current = Date.now();
   }, [canvasWidth, canvasHeight]);
 
@@ -45,36 +81,35 @@ export function useGameState(canvasWidth: number, canvasHeight: number) {
   }, []);
 
   const endGame = useCallback(() => {
-    const finalScore = gameState.score;
-    const finalCoins = gameState.coins;
-    
-    // Save to leaderboard
-    storage.addLeaderboardEntry({
-      date: new Date().toISOString(),
-      score: finalScore,
-      coins: finalCoins,
-      level: gameState.level,
-      catches: gameState.catches
+    // Save coins to total
+    storage.addCoins(gameState.coins);
+
+    setGameState({
+      isPlaying: false,
+      isPaused: false,
+      level: 1,
+      score: 0,
+      coins: 0,
+      catches: 0,
+      cookies: [],
+      mouthPosition: { x: canvasWidth / 2, y: canvasHeight / 2 },
+      mouthOpen: false,
+      gameStartTime: 0
     });
-
-    // Add coins to total
-    storage.addCoins(finalCoins);
-
-    setGameState(prev => ({ 
-      ...initialGameState,
-      mouthPosition: { x: canvasWidth / 2, y: canvasHeight / 2 }
-    }));
 
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
     }
-  }, [gameState.score, gameState.coins, gameState.level, gameState.catches, canvasWidth, canvasHeight]);
+  }, [gameState.coins, canvasWidth, canvasHeight]);
 
   const updateMouthPosition = useCallback((position: { x: number; y: number }, openness: number) => {
+    const settings = storage.getSettings();
+    const isOpen = openness >= settings.mouthOpenThreshold;
+    
     setGameState(prev => ({
       ...prev,
       mouthPosition: position,
-      mouthOpen: openness
+      mouthOpen: isOpen
     }));
   }, []);
 
@@ -82,49 +117,44 @@ export function useGameState(canvasWidth: number, canvasHeight: number) {
     if (!gameState.isPlaying || gameState.isPaused) return;
 
     const now = Date.now();
-    const deltaTime = (now - lastUpdateRef.current) / 16.67; // Normalize to 60fps
-    lastUpdateRef.current = now;
-
+    
     setGameState(prev => {
       let newState = { ...prev };
       
-      // Update cookies
-      newState.cookies = updateCookies(prev.cookies, deltaTime);
+      // Update cookies (move them down)
+      newState.cookies = prev.cookies
+        .map(cookie => ({
+          ...cookie,
+          y: cookie.y + cookie.speed / 60 // 60fps
+        }))
+        .filter(cookie => cookie.y < canvasHeight + 50);
       
       // Spawn new cookies
-      const timeSinceLastSpawn = now - lastSpawnRef.current;
-      const currentLevel = Math.min(prev.level, 3);
-      const spawnRate = currentLevel === 1 ? 1200 : currentLevel === 2 ? 800 : 500;
-      
-      if (timeSinceLastSpawn > spawnRate) {
-        newState.cookies.push(generateCookie(canvasWidth, prev.level));
+      const config = LEVEL_CONFIGS[Math.min(prev.level - 1, LEVEL_CONFIGS.length - 1)];
+      if (now - lastSpawnRef.current > config.spawnRate) {
+        newState.cookies.push(generateCookie());
         lastSpawnRef.current = now;
       }
 
-      // Check collisions
-      const settings = storage.getSettings();
-      if (prev.mouthOpen >= settings.mouthOpenThreshold) {
-        const mouthRadius = 25;
+      // Check collisions when mouth is open
+      if (prev.mouthOpen) {
+        const mouthRadius = 30;
         
         newState.cookies = newState.cookies.filter(cookie => {
-          const collision = checkCollision(
-            prev.mouthPosition.x,
-            prev.mouthPosition.y,
-            mouthRadius,
-            cookie
+          const distance = Math.sqrt(
+            Math.pow(prev.mouthPosition.x - cookie.x, 2) + 
+            Math.pow(prev.mouthPosition.y - cookie.y, 2)
           );
           
-          if (collision) {
-            const points = calculateScore(cookie.type);
+          if (distance <= (mouthRadius + cookie.radius)) {
+            const points = COOKIE_TYPES[cookie.type].points;
             newState.score += points;
             newState.coins += points;
             newState.catches += 1;
             
             // Check for level up
-            const newLevel = checkLevelUp(newState.catches, prev.level);
-            if (newLevel > prev.level) {
-              newState.level = newLevel;
-              storage.unlockLevel(newLevel);
+            if (newState.catches >= config.catchesRequired && prev.level < LEVEL_CONFIGS.length) {
+              newState.level = prev.level + 1;
             }
             
             return false; // Remove caught cookie
@@ -138,7 +168,7 @@ export function useGameState(canvasWidth: number, canvasHeight: number) {
     });
 
     animationFrameRef.current = requestAnimationFrame(gameLoop);
-  }, [gameState.isPlaying, gameState.isPaused, canvasWidth]);
+  }, [gameState.isPlaying, gameState.isPaused, canvasHeight, generateCookie]);
 
   useEffect(() => {
     if (gameState.isPlaying && !gameState.isPaused) {
@@ -159,4 +189,4 @@ export function useGameState(canvasWidth: number, canvasHeight: number) {
     endGame,
     updateMouthPosition
   };
-}
+};

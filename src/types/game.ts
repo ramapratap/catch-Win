@@ -1,24 +1,24 @@
-export interface Cookie {
-  id: string;
-  x: number;
-  y: number;
-  speed: number;
-  radius: number;
-  type: 'normal' | 'golden' | 'rotten';
-}
+// export interface Cookie {
+//   id: string;
+//   x: number;
+//   y: number;
+//   speed: number;
+//   radius: number;
+//   type: 'normal' | 'golden' | 'rotten';
+// }
 
-export interface GameState {
-  isPlaying: boolean;
-  isPaused: boolean;
-  level: number;
-  score: number;
-  coins: number;
-  catches: number;
-  cookies: Cookie[];
-  mouthPosition: { x: number; y: number };
-  mouthOpen: number;
-  gameStartTime: number;
-}
+// export interface GameState {
+//   isPlaying: boolean;
+//   isPaused: boolean;
+//   level: number;
+//   score: number;
+//   coins: number;
+//   catches: number;
+//   cookies: Cookie[];
+//   mouthPosition: { x: number; y: number };
+//   mouthOpen: number;
+//   gameStartTime: number;
+// }
 
 export interface LevelConfig {
   spawnRate: number;
@@ -28,13 +28,13 @@ export interface LevelConfig {
   name: string;
 }
 
-export interface GameSettings {
-  mouthOpenThreshold: number;
-  audioEnabled: boolean;
-  cameraEnabled: boolean;
-  debugMode: boolean;
-  canvasResolution: number;
-}
+// export interface GameSettings {
+//   mouthOpenThreshold: number;
+//   audioEnabled: boolean;
+//   cameraEnabled: boolean;
+//   debugMode: boolean;
+//   canvasResolution: number;
+// }
 
 export interface LeaderboardEntry {
   id: string;
@@ -57,4 +57,34 @@ export interface FaceLandmarks {
   x: number;
   y: number;
   z?: number;
+}
+
+export interface Cookie {
+  id: string;
+  x: number;
+  y: number;
+  speed: number;
+  radius: number;
+  type: 'normal' | 'golden' | 'rotten';
+}
+
+export interface GameState {
+  isPlaying: boolean;
+  isPaused: boolean;
+  level: number;
+  score: number;
+  coins: number;
+  catches: number;
+  cookies: Cookie[];
+  mouthPosition: { x: number; y: number };
+  mouthOpen: boolean;
+  gameStartTime: number;
+}
+
+export interface GameSettings {
+  canvasResolution: any;
+  mouthOpenThreshold: number;
+  audioEnabled: boolean;
+  cameraEnabled: boolean;
+  debugMode: boolean;
 }

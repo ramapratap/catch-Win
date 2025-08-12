@@ -1,32 +1,32 @@
-export const LEVEL_CONFIGS = [
-  {
-    spawnRate: 1200,
-    minSpeed: 1,
-    maxSpeed: 2,
-    catchesRequired: 10,
-    name: 'Easy'
-  },
-  {
-    spawnRate: 800,
-    minSpeed: 2,
-    maxSpeed: 3,
-    catchesRequired: 25,
-    name: 'Medium'
-  },
-  {
-    spawnRate: 500,
-    minSpeed: 3,
-    maxSpeed: 5,
-    catchesRequired: 50,
-    name: 'Hard'
-  }
-];
+// export const LEVEL_CONFIGS = [
+//   {
+//     spawnRate: 1200,
+//     minSpeed: 1,
+//     maxSpeed: 2,
+//     catchesRequired: 10,
+//     name: 'Easy'
+//   },
+//   {
+//     spawnRate: 800,
+//     minSpeed: 2,
+//     maxSpeed: 3,
+//     catchesRequired: 25,
+//     name: 'Medium'
+//   },
+//   {
+//     spawnRate: 500,
+//     minSpeed: 3,
+//     maxSpeed: 5,
+//     catchesRequired: 50,
+//     name: 'Hard'
+//   }
+// ];
 
-export const COOKIE_TYPES = {
-  normal: { points: 5, color: '#D97706', probability: 0.7 },
-  golden: { points: 25, color: '#F59E0B', probability: 0.2 },
-  rotten: { points: -10, color: '#6B7280', probability: 0.1 }
-};
+// export const COOKIE_TYPES = {
+//   normal: { points: 5, color: '#D97706', probability: 0.7 },
+//   golden: { points: 25, color: '#F59E0B', probability: 0.2 },
+//   rotten: { points: -10, color: '#6B7280', probability: 0.1 }
+// };
 
 export const DEFAULT_SETTINGS = {
   mouthOpenThreshold: 0.03,
@@ -51,3 +51,15 @@ export const MOUTH_LANDMARKS = {
 };
 
 export const FOREHEAD_TO_CHIN = [10, 152]; // Landmark indices for face height
+
+export const COOKIE_TYPES = {
+  normal: { points: 5, color: '#D97706', probability: 0.7 },
+  golden: { points: 25, color: '#F59E0B', probability: 0.2 },
+  rotten: { points: -10, color: '#6B7280', probability: 0.1 }
+};
+
+export const LEVEL_CONFIGS = [
+  { spawnRate: 2000, minSpeed: 1, maxSpeed: 2, catchesRequired: 10, name: 'Easy' },
+  { spawnRate: 1500, minSpeed: 2, maxSpeed: 3, catchesRequired: 25, name: 'Medium' },
+  { spawnRate: 1000, minSpeed: 3, maxSpeed: 5, catchesRequired: 50, name: 'Hard' }
+];

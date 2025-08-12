@@ -245,7 +245,7 @@ export function GameCanvas({ gameState, width, height, cookieImage }: GameCanvas
     const debugInfo = [
       `FPS: ~60`,
       `Cookies: ${gameState.cookies.length}`,
-      `Mouth Open: ${(gameState.mouthOpen * 100).toFixed(1)}%`,
+      `Mouth Open: ${((Number(gameState.mouthOpen) || 0) * 100).toFixed(1)}%`,  
       `Threshold: ${(settings.mouthOpenThreshold * 100).toFixed(1)}%`,
       `Position: (${Math.round(gameState.mouthPosition.x)}, ${Math.round(gameState.mouthPosition.y)})`,
       `Camera: ${settings.cameraEnabled ? 'ON' : 'OFF'}`,

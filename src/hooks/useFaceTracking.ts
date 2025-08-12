@@ -1,14 +1,10 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { FaceMesh } from '@mediapipe/face_mesh';
-import { Camera } from '@mediapipe/camera_utils';
-import { FaceLandmarks } from '../types/game';
-import { FACE_MESH_CONFIG, MOUTH_LANDMARKS, FOREHEAD_TO_CHIN } from '../utils/constants';
-import { calculateMouthOpenness, mapVideoToCanvas, calculateFaceHeight } from '../utils/collisionDetection';
 
 export function useFaceTracking(enabled: boolean, canvasWidth: number, canvasHeight: number) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const faceMeshRef = useRef<FaceMesh | null>(null);
-  const cameraRef = useRef<Camera | null>(null);
+  const faceMeshRef = useRef<any>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const processingRef = useRef<boolean>(false);
   
   const [isInitialized, setIsInitialized] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -16,44 +12,100 @@ export function useFaceTracking(enabled: boolean, canvasWidth: number, canvasHei
   const [mouthOpenness, setMouthOpenness] = useState(0);
   const [faceDetected, setFaceDetected] = useState(false);
 
-  const onResults = useCallback((results: any) => {
-    if (results.multiFaceLandmarks && results.multiFaceLandmarks[0]) {
-      const landmarks: FaceLandmarks[] = results.multiFaceLandmarks[0];
-      setFaceDetected(true);
+  // Mouth landmark indices for MediaPipe FaceMesh
+  const MOUTH_LANDMARKS = {
+    upper: [13, 14, 15, 16, 17, 18, 200],
+    lower: [178, 179, 180, 181, 182, 183, 184]
+  };
 
+  const calculateMouthOpenness = useCallback((landmarks: any[]) => {
+    if (!landmarks || landmarks.length === 0) return 0;
+
+    try {
       // Get mouth landmark points
-      const upperLipPoints = MOUTH_LANDMARKS.upper.map(idx => landmarks[idx]);
-      const lowerLipPoints = MOUTH_LANDMARKS.lower.map(idx => landmarks[idx]);
+      const upperLipPoints = MOUTH_LANDMARKS.upper.map(idx => landmarks[idx]).filter(p => p);
+      const lowerLipPoints = MOUTH_LANDMARKS.lower.map(idx => landmarks[idx]).filter(p => p);
+      
+      if (upperLipPoints.length === 0 || lowerLipPoints.length === 0) return 0;
+
+      // Calculate average Y positions
+      const upperAvg = upperLipPoints.reduce((sum, point) => sum + point.y, 0) / upperLipPoints.length;
+      const lowerAvg = lowerLipPoints.reduce((sum, point) => sum + point.y, 0) / lowerLipPoints.length;
       
       // Calculate face height for normalization
-      const foreheadPoint = landmarks[FOREHEAD_TO_CHIN[0]];
-      const chinPoint = landmarks[FOREHEAD_TO_CHIN[1]];
-      const faceHeight = calculateFaceHeight(foreheadPoint, chinPoint);
+      const foreheadPoint = landmarks[10]; // Forehead
+      const chinPoint = landmarks[152]; // Chin
       
+      if (!foreheadPoint || !chinPoint) return 0;
+      
+      const faceHeight = Math.abs(chinPoint.y - foreheadPoint.y);
+      if (faceHeight === 0) return 0;
+      
+      // Return normalized mouth openness
+      return Math.max(0, (lowerAvg - upperAvg) / faceHeight);
+    } catch (error) {
+      console.error('Error calculating mouth openness:', error);
+      return 0;
+    }
+  }, []);
+
+  const onResults = useCallback((results: any) => {
+    if (results.multiFaceLandmarks && results.multiFaceLandmarks[0]) {
+      const landmarks = results.multiFaceLandmarks[0];
+      setFaceDetected(true);
+
       // Calculate mouth openness
-      const openness = calculateMouthOpenness(upperLipPoints, lowerLipPoints, faceHeight);
+      const openness = calculateMouthOpenness(landmarks);
       setMouthOpenness(openness);
 
       // Calculate mouth center position
+      const upperLipPoints = MOUTH_LANDMARKS.upper.map(idx => landmarks[idx]).filter(p => p);
+      const lowerLipPoints = MOUTH_LANDMARKS.lower.map(idx => landmarks[idx]).filter(p => p);
       const allMouthPoints = [...upperLipPoints, ...lowerLipPoints];
-      const mouthCenterX = allMouthPoints.reduce((sum, point) => sum + point.x, 0) / allMouthPoints.length;
-      const mouthCenterY = allMouthPoints.reduce((sum, point) => sum + point.y, 0) / allMouthPoints.length;
-
-      // Map to canvas coordinates (assuming video is 640x480)
-      const canvasPosition = mapVideoToCanvas(
-        mouthCenterX * 640,
-        mouthCenterY * 480,
-        640,
-        480,
-        canvasWidth,
-        canvasHeight
-      );
       
-      setMouthPosition(canvasPosition);
+      if (allMouthPoints.length > 0) {
+        const mouthCenterX = allMouthPoints.reduce((sum, point) => sum + point.x, 0) / allMouthPoints.length;
+        const mouthCenterY = allMouthPoints.reduce((sum, point) => sum + point.y, 0) / allMouthPoints.length;
+
+        // Map to canvas coordinates (flip X for mirror effect)
+        const canvasX = canvasWidth - (mouthCenterX * canvasWidth);
+        const canvasY = mouthCenterY * canvasHeight;
+        
+        setMouthPosition({ x: canvasX, y: canvasY });
+      }
     } else {
       setFaceDetected(false);
     }
-  }, [canvasWidth, canvasHeight]);
+  }, [canvasWidth, canvasHeight, calculateMouthOpenness]);
+
+  const cleanup = useCallback(() => {
+    processingRef.current = false;
+    
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+      if (videoRef.current.parentNode) {
+        videoRef.current.parentNode.removeChild(videoRef.current);
+      }
+    }
+
+    if (faceMeshRef.current) {
+      try {
+        faceMeshRef.current.close();
+      } catch (e) {
+        // Ignore cleanup errors
+      }
+      faceMeshRef.current = null;
+    }
+
+    setIsInitialized(false);
+    setFaceDetected(false);
+    setError(null);
+  }, []);
 
   useEffect(() => {
     if (!enabled) {
@@ -67,63 +119,86 @@ export function useFaceTracking(enabled: boolean, canvasWidth: number, canvasHei
 
         // Create video element
         const video = document.createElement('video');
-        video.style.display = 'none';
-        document.body.appendChild(video);
+        video.width = 640;
+        video.height = 480;
+        video.autoplay = true;
+        video.muted = true;
+        video.playsInline = true;
         videoRef.current = video;
 
-        // Initialize FaceMesh
-        const faceMesh = new FaceMesh({
-          locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+        // Get camera stream
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { 
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+            facingMode: 'user'
+          }
+        });
+        
+        streamRef.current = stream;
+        video.srcObject = stream;
+        
+        // Wait for video to be ready
+        await new Promise<void>((resolve, reject) => {
+          const timeout = setTimeout(() => reject(new Error('Video timeout')), 10000);
+          
+          video.onloadedmetadata = () => {
+            clearTimeout(timeout);
+            video.play().then(resolve).catch(reject);
+          };
         });
 
-        faceMesh.setOptions(FACE_MESH_CONFIG);
+        // Initialize FaceMesh
+        const { FaceMesh } = await import('@mediapipe/face_mesh');
+        
+        const faceMesh = new FaceMesh({
+          locateFile: (file: string) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+          }
+        });
+
+        await faceMesh.setOptions({
+          maxNumFaces: 1,
+          refineLandmarks: true,
+          minDetectionConfidence: 0.5,
+          minTrackingConfidence: 0.5
+        });
+
         faceMesh.onResults(onResults);
         faceMeshRef.current = faceMesh;
 
-        // Initialize Camera
-        const camera = new Camera(video, {
-          onFrame: async () => {
-            if (video.readyState >= 2) {
-              await faceMesh.send({ image: video });
+        // Start processing frames
+        processingRef.current = true;
+        const processFrame = async () => {
+          if (!processingRef.current || !video || !faceMeshRef.current) return;
+          
+          if (video.readyState >= 2) {
+            try {
+              await faceMeshRef.current.send({ image: video });
+            } catch (error) {
+              console.error('Error processing frame:', error);
             }
-          },
-          width: 640,
-          height: 480
-        });
+          }
+          
+          if (processingRef.current) {
+            requestAnimationFrame(processFrame);
+          }
+        };
 
-        await camera.start();
-        cameraRef.current = camera;
         setIsInitialized(true);
+        processFrame();
 
       } catch (error) {
         console.error('Failed to initialize face tracking:', error);
-        setError('Failed to access camera or initialize face tracking. Please ensure camera permissions are granted.');
+        setError('Failed to access camera or initialize face tracking. Please ensure camera permissions are granted and you are using HTTPS.');
+        cleanup();
       }
     };
 
     initializeFaceTracking();
 
     return cleanup;
-  }, [enabled, onResults]);
-
-  const cleanup = useCallback(() => {
-    if (cameraRef.current) {
-      cameraRef.current.stop();
-      cameraRef.current = null;
-    }
-
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-      if (videoRef.current.parentNode) {
-        videoRef.current.parentNode.removeChild(videoRef.current);
-      }
-      videoRef.current = null;
-    }
-
-    faceMeshRef.current = null;
-    setIsInitialized(false);
-    setFaceDetected(false);
-  }, []);
+  }, [enabled, onResults, cleanup]);
 
   return {
     isInitialized,
@@ -131,6 +206,7 @@ export function useFaceTracking(enabled: boolean, canvasWidth: number, canvasHei
     mouthPosition,
     mouthOpenness,
     faceDetected,
-    cleanup
+    cleanup,
+    videoRef: videoRef.current
   };
 }

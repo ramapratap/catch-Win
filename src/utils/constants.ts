@@ -36,6 +36,7 @@ export const DEFAULT_SETTINGS = {
   canvasResolution: 1
 };
 
+// Simplified MediaPipe configuration
 export const FACE_MESH_CONFIG = {
   maxNumFaces: 1,
   refineLandmarks: true,

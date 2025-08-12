@@ -1,25 +1,17 @@
-import React, { useState, useEffect } from 'react';
-import { HomeScreen } from './components/UI/HomeScreen';
-import { Settings } from './components/UI/Settings';
-import { Leaderboard } from './components/UI/Leaderboard';
-import { Shop } from './components/UI/Shop';
-import { GameCanvas } from './components/Game/GameCanvas';
-import { GameHUD } from './components/Game/GameHUD';
-import { FaceTracker } from './components/Game/FaceTracker';
-import { useGameState } from './hooks/useGameState';
-import { storage } from './utils/storage';
-import { loadGameAssets, ASSETS } from './utils/assets';
+import React, { useState, useEffect, useRef } from 'react';
 import { Button } from './components/Common/Button';
 import { Coins, Home, Pause, Play, Target, Trophy } from 'lucide-react';
 import { COOKIE_TYPES, LEVEL_CONFIGS } from './utils/constants';
 import { Cookie } from './types/game';
 import { useFaceTracking } from './hooks/useFaceTracking';
-
-type Screen = 'home' | 'game' | 'settings' | 'leaderboard' | 'shop';
+import { useGameState } from './hooks/useGameState';
+import { storage } from './utils/storage';
 
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<'home' | 'game'>('home');
   const [selectedLevel, setSelectedLevel] = useState(1);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const animationRef = useRef<number>();
   
   const canvasWidth = window.innerWidth;
   const canvasHeight = window.innerHeight;
@@ -39,6 +31,7 @@ export default function App() {
   }, [mouthPosition, mouthOpenness, updateMouthPosition]);
 
   const handleStartGame = () => {
+    console.log('Handle start game called');
     startGame(selectedLevel);
     setCurrentScreen('game');
   };
@@ -123,6 +116,71 @@ export default function App() {
     ctx.restore();
   };
 
+  // Canvas animation loop
+  useEffect(() => {
+    if (currentScreen !== 'game') return;
+
+    const animate = () => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      
+      // Clear canvas
+      ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+      
+      console.log('Drawing cookies:', gameState.cookies.length);
+      
+      // Draw cookies
+      gameState.cookies.forEach((cookie, index) => {
+        console.log(`Drawing cookie ${index}:`, cookie.x, cookie.y, cookie.type);
+        drawCookie(ctx, cookie);
+      });
+      
+      // Draw mouth indicator
+      if (gameState.isPlaying) {
+        drawMouthIndicator(ctx);
+      }
+
+      // Debug information
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = '14px monospace';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      
+      const debugInfo = [
+        `Game Playing: ${gameState.isPlaying}`,
+        `Game Paused: ${gameState.isPaused}`,
+        `Cookies Count: ${gameState.cookies.length}`,
+        `Level: ${gameState.level}`,
+        `Mouth Open: ${gameState.mouthOpen}`,
+        `Face Detected: ${faceDetected}`,
+        `Mouth Openness: ${(mouthOpenness * 100).toFixed(1)}%`,
+        `Threshold: ${(settings.mouthOpenThreshold * 100).toFixed(1)}%`
+      ];
+      
+      // Background for debug text
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+      ctx.fillRect(10, 100, 350, debugInfo.length * 18 + 10);
+      
+      ctx.fillStyle = '#00FF00';
+      debugInfo.forEach((info, index) => {
+        ctx.fillText(info, 15, 110 + index * 18);
+      });
+
+      animationRef.current = requestAnimationFrame(animate);
+    };
+
+    animationRef.current = requestAnimationFrame(animate);
+
+    return () => {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+  }, [currentScreen, gameState, faceDetected, mouthOpenness, settings.mouthOpenThreshold, canvasWidth, canvasHeight]);
+
   // Home Screen
   if (currentScreen === 'home') {
     return (
@@ -154,7 +212,7 @@ export default function App() {
               >
                 <div className="text-white font-semibold text-lg">{level.name}</div>
                 <div className="text-gray-300 text-sm">
-                  Catches needed: {level.catchesRequired}
+                  Catches needed: {level.catchesRequired} | Spawn rate: {level.spawnRate}ms
                 </div>
               </button>
             ))}
@@ -192,26 +250,9 @@ export default function App() {
 
       {/* Game Canvas Overlay */}
       <canvas
-        ref={(canvas) => {
-          if (!canvas) return;
-          
-          const ctx = canvas.getContext('2d');
-          if (!ctx) return;
-          
-          canvas.width = canvasWidth;
-          canvas.height = canvasHeight;
-          
-          // Clear canvas
-          ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-          
-          // Draw cookies
-          gameState.cookies.forEach(cookie => drawCookie(ctx, cookie));
-          
-          // Draw mouth indicator
-          if (gameState.isPlaying) {
-            drawMouthIndicator(ctx);
-          }
-        }}
+        ref={canvasRef}
+        width={canvasWidth}
+        height={canvasHeight}
         className="absolute inset-0 w-full h-full pointer-events-none"
         style={{ zIndex: 2 }}
       />
@@ -308,7 +349,7 @@ export default function App() {
             <h2 className="text-2xl font-bold text-gray-900 mb-4">Game Paused</h2>
             <p className="text-gray-600 mb-6">Take a break and come back when ready!</p>
             <div className="space-x-4">
-              <Button onClick={pauseGame} icon={Home} variant="primary">
+              <Button onClick={pauseGame} icon={Play} variant="primary">
                 Resume Game
               </Button>
               <Button onClick={handleEndGame} icon={Home} variant="secondary">

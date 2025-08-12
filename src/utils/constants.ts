@@ -59,7 +59,7 @@ export const COOKIE_TYPES = {
 };
 
 export const LEVEL_CONFIGS = [
-  { spawnRate: 2000, minSpeed: 1, maxSpeed: 2, catchesRequired: 10, name: 'Easy' },
-  { spawnRate: 1500, minSpeed: 2, maxSpeed: 3, catchesRequired: 25, name: 'Medium' },
-  { spawnRate: 1000, minSpeed: 3, maxSpeed: 5, catchesRequired: 50, name: 'Hard' }
+  { spawnRate: 400, minSpeed: 12, maxSpeed: 18, catchesRequired: 10, name: 'Easy' },
+  { spawnRate: 1200, minSpeed: 5, maxSpeed: 8, catchesRequired: 25, name: 'Medium' },
+  { spawnRate: 800, minSpeed: 7, maxSpeed: 12, catchesRequired: 50, name: 'Hard' }
 ];
